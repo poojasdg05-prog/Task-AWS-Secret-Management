@@ -1,139 +1,91 @@
-import json
-import os
-
 import boto3
-from botocore.exceptions import ClientError
+import json
 
+REGION = "us-east-1"
 
-SECRET_NAME = "project/db-secret"
-KMS_ALIAS = "alias/project-secret-key"
+ALIAS_NAME = "alias/project-secret-key-2"
+SECRET_NAME = "project/app1-db"
 
+USERNAME = "admin-Developers"
+PASSWORD = "DevOps@2026#Secure"
 
-def get_password():
-    """Read the password from an environment variable."""
-    password = os.environ.get("SECRET_PASSWORD")
+kms = boto3.client("kms", region_name=REGION)
+secrets = boto3.client("secretsmanager", region_name=REGION)
 
-    if not password:
-        raise RuntimeError(
-            "SECRET_PASSWORD environment variable is not set."
-        )
+print("Starting AWS Secret Automation...")
 
-    return password
+# 1. Check if KMS alias already exists
+print("Checking KMS key...")
+aliases = kms.list_aliases()["Aliases"]
+key_id = None
+for alias in aliases:
+    if alias.get("AliasName") == ALIAS_NAME:
+        key_id = alias["TargetKeyId"]
+        break
 
+# 2. Create KMS key if it doesn't exist
+if key_id:
+    print("Existing KMS key found:", key_id)
+else:
+    print("Creating new KMS key...")
+  response = kms.create_key(
+        Description="Project Secret Encryption Key"
+    )
+  key_id = response["KeyMetadata"]["KeyId"]
+ kms.create_alias(
+        AliasName=ALIAS_NAME,
+        TargetKeyId=key_id
+    )
+print("KMS key created:", key_id)
 
-def get_secrets_manager_client():
-    """Create and return a Secrets Manager client."""
-    return boto3.client("secretsmanager")
+# 3. Enable key rotation
+print("Enabling KMS key rotation...")
+kms.enable_key_rotation(
+    KeyId=key_id
+)
+print("KMS rotation enabled.")
 
+# 4. Prepare username/password
+secret_value = json.dumps({
+    "username": USERNAME,
+    "password": PASSWORD
+})
 
-def create_secret(client, password):
-    """Create the secret if it does not already exist."""
-    try:
-        response = client.create_secret(
-            Name=SECRET_NAME,
-            KmsKeyId=KMS_ALIAS,
-            SecretString=json.dumps(
-                {
-                    "username": "admin",
-                    "password": password
-                }
-            )
-        )
+# 5. Create or update secret
+print("Checking Secrets Manager secret...")
 
-        print("Secret created.")
-        print("ARN:", response["ARN"])
+try:
+    response = secrets.create_secret(
+        Name=SECRET_NAME,
+        Description="Application Database Credentials",
+        KmsKeyId=key_id,
+        SecretString=secret_value
+    )
+ print("Secret created successfully.")
+ except secrets.exceptions.ResourceExistsException:
+   print("Secret already exists.")
+    print("Updating existing secret...")
 
-    except client.exceptions.ResourceExistsException:
-        print("Secret already exists. Skipping creation.")
+      secrets.update_secret(
+        SecretId=SECRET_NAME,
+        SecretString=secret_value
+    )
+    print("Secret updated successfully.")
 
+# 6. Retrieve secret
+print("Retrieving secret...")
+response = secrets.get_secret_value(
+    SecretId=SECRET_NAME
+)
+secret = json.loads(response["SecretString"])
+print("Username:", secret["username"])
+print("Password:", secret["password"])
 
-def get_secret(client):
-    """Retrieve the secret without displaying the password."""
-    try:
-        response = client.get_secret_value(
-            SecretId=SECRET_NAME
-        )
-
-        secret = json.loads(response["SecretString"])
-
-        print("Secret retrieved successfully.")
-        print("Username:", secret.get("username"))
-        print("Password: [REDACTED]")
-
-    except ClientError as error:
-        print("Error reading secret:")
-        print(error)
-
-
-def update_secret(client, password):
-    """Update the secret."""
-    try:
-        client.update_secret(
-            SecretId=SECRET_NAME,
-            SecretString=json.dumps(
-                {
-                    "username": "admin",
-                    "password": password
-                }
-            )
-        )
-
-        print("Secret updated successfully.")
-
-    except ClientError as error:
-        print("Error updating secret:")
-        print(error)
-
-
-def list_secrets(client):
-    """List secrets beginning with project/."""
-    try:
-        response = client.list_secrets()
-
-        print("Project secrets:")
-
-        for secret in response["SecretList"]:
-            name = secret["Name"]
-
-            if name.startswith("project/"):
-                print(name)
-
-    except ClientError as error:
-        print("Error listing secrets:")
-        print(error)
-
-
-def main():
-    """Run the complete Secrets Manager automation."""
-
-    password = get_password()
-    client = get_secrets_manager_client()
-
-    print("==========================================")
-    print("AWS Secrets Manager Python Automation")
-    print("==========================================")
-
-    create_secret(client, password)
-
-    print()
-    print("Reading secret...")
-    get_secret(client)
-
-    print()
-    print("Updating secret...")
-    update_secret(client, password)
-
-    print()
-    print("Reading updated secret...")
-    get_secret(client)
-
-    print()
-    list_secrets(client)
-
-    print("==========================================")
-    print("Automation completed successfully.")
-    print("==========================================")
-
-
-if __name__ == "__main__":
-    main()
+# 7. Verify KMS encryption
+print("Checking encryption key...")
+response = secrets.describe_secret(
+    SecretId=SECRET_NAME
+)
+print("Secret name:", response["Name"])
+print("KMS key:", response["KmsKeyId"])
+print("Automation completed successfully!")
