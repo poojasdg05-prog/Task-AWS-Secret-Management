@@ -1,91 +1,128 @@
-import boto3
 import json
+import boto3
+import pymysql
+from botocore.exceptions import ClientError
 
-REGION = "us-east-1"
+# ==============================
+# Configuration
+# ==============================
 
-ALIAS_NAME = "alias/project-secret-key-2"
-SECRET_NAME = "project/app1-db"
+SECRET_NAME = "myapp/database-secret"
+AWS_REGION = "us-east-1"
 
-USERNAME = "admin-Developers"
-PASSWORD = "DevOps@2026#Secure"
+# ==============================
+# Get secret from AWS Secrets Manager
+# ==============================
 
-kms = boto3.client("kms", region_name=REGION)
-secrets = boto3.client("secretsmanager", region_name=REGION)
-
-print("Starting AWS Secret Automation...")
-
-# 1. Check if KMS alias already exists
-print("Checking KMS key...")
-aliases = kms.list_aliases()["Aliases"]
-key_id = None
-for alias in aliases:
-    if alias.get("AliasName") == ALIAS_NAME:
-        key_id = alias["TargetKeyId"]
-        break
-
-# 2. Create KMS key if it doesn't exist
-if key_id:
-    print("Existing KMS key found:", key_id)
-else:
-    print("Creating new KMS key...")
-  response = kms.create_key(
-        Description="Project Secret Encryption Key"
+def get_secret():
+    client = boto3.client(
+        "secretsmanager",
+        region_name=AWS_REGION
     )
-  key_id = response["KeyMetadata"]["KeyId"]
- kms.create_alias(
-        AliasName=ALIAS_NAME,
-        TargetKeyId=key_id
-    )
-print("KMS key created:", key_id)
 
-# 3. Enable key rotation
-print("Enabling KMS key rotation...")
-kms.enable_key_rotation(
-    KeyId=key_id
-)
-print("KMS rotation enabled.")
+    try:
+        response = client.get_secret_value(
+            SecretId=SECRET_NAME
+        )
 
-# 4. Prepare username/password
-secret_value = json.dumps({
-    "username": USERNAME,
-    "password": PASSWORD
-})
+        secret_string = response["SecretString"]
 
-# 5. Create or update secret
-print("Checking Secrets Manager secret...")
+        # Convert JSON string into Python dictionary
+        secret = json.loads(secret_string)
 
-try:
-    response = secrets.create_secret(
-        Name=SECRET_NAME,
-        Description="Application Database Credentials",
-        KmsKeyId=key_id,
-        SecretString=secret_value
-    )
- print("Secret created successfully.")
- except secrets.exceptions.ResourceExistsException:
-   print("Secret already exists.")
-    print("Updating existing secret...")
+        return secret
 
-      secrets.update_secret(
-        SecretId=SECRET_NAME,
-        SecretString=secret_value
-    )
-    print("Secret updated successfully.")
+    except ClientError as e:
+        print("Error retrieving secret from AWS Secrets Manager")
+        print(e)
+        return None
 
-# 6. Retrieve secret
-print("Retrieving secret...")
-response = secrets.get_secret_value(
-    SecretId=SECRET_NAME
-)
-secret = json.loads(response["SecretString"])
-print("Username:", secret["username"])
-print("Password:", secret["password"])
 
-# 7. Verify KMS encryption
-print("Checking encryption key...")
-response = secrets.describe_secret(
-    SecretId=SECRET_NAME
-)
-print("Secret name:", response["Name"])
-print("KMS key:", response["KmsKeyId"])
-print("Automation completed successfully!")
+# ==============================
+# Connect to MySQL database
+# ==============================
+
+def connect_to_database(secret):
+
+    try:
+        connection = pymysql.connect(
+            host=secret["host"],
+            user=secret["username"],
+            password=secret["password"],
+            database=secret["database"],
+            port=int(secret["port"])
+        )
+
+        print("Database connection successful!")
+
+        return connection
+
+    except pymysql.MySQLError as e:
+        print("Database connection failed")
+        print(e)
+        return None
+
+
+# ==============================
+# Main program
+# ==============================
+
+def main():
+
+    print("Retrieving secret from AWS Secrets Manager...")
+
+    secret = get_secret()
+
+    if secret is None:
+        return
+
+    # --------------------------------
+    # Do NOT print the real password
+    # --------------------------------
+
+    print("\nSecret retrieved successfully")
+    print("Host     :", secret["host"])
+    print("Username :", secret["username"])
+    print("Password : ******")
+    print("Database :", secret["database"])
+    print("Port     :", secret["port"])
+
+    # --------------------------------
+    # Connect to database
+    # --------------------------------
+
+    connection = connect_to_database(secret)
+
+    if connection is None:
+        return
+
+    # --------------------------------
+    # Test database
+    # --------------------------------
+
+    try:
+        cursor = connection.cursor()
+
+        cursor.execute("SELECT VERSION();")
+
+        result = cursor.fetchone()
+
+        print("\nMySQL connection test successful!")
+        print("MySQL Version:", result[0])
+
+        cursor.close()
+        connection.close()
+
+        print("Database connection closed.")
+
+    except pymysql.MySQLError as e:
+        print("Database query failed")
+        print(e)
+
+
+# ==============================
+# Run program
+# ==============================
+
+if __name__ == "__main__":
+    main()
