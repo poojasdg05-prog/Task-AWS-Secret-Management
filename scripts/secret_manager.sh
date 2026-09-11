@@ -1,86 +1,45 @@
 #!/bin/bash
 
-set -e
+SECRET_NAME="project/app-db"
+ALIAS_NAME="alias/project-secret-key"
 
-SECRET_NAME="project/db-secret"
-KMS_ALIAS="alias/project-secret-key"
+USERNAME="appadmin"
+PASSWORD="DevOps@2026#Secure"
 
-if [ -z "$SECRET_PASSWORD" ]; then
-    echo "ERROR: SECRET_PASSWORD environment variable is not set."
-    exit 1
-fi
+echo "Creating KMS Key..."
 
-echo "=========================================="
-echo "AWS Secrets Manager Automation"
-echo "=========================================="
+KEY_ID=$(aws kms create-key \
+--description "Project Secret Key" \
+--query KeyMetadata.KeyId \
+--output text)
 
-echo
-echo "1. Checking whether secret exists..."
+echo "Key ID: $KEY_ID"
 
-if aws secretsmanager describe-secret \
-    --secret-id "$SECRET_NAME" >/dev/null 2>&1
-then
-    echo "Secret already exists: $SECRET_NAME"
-else
-    echo "Secret does not exist. Creating it..."
+aws kms create-alias \
+--alias-name $ALIAS_NAME \
+--target-key-id $KEY_ID
 
-    aws secretsmanager create-secret \
-        --name "$SECRET_NAME" \
-        --kms-key-id "$KMS_ALIAS" \
-        --secret-string "{\"username\":\"admin\",\"password\":\"$SECRET_PASSWORD\"}" \
-        >/dev/null
+aws kms enable-key-rotation \
+--key-id $KEY_ID
 
-    echo "Secret created successfully."
-fi
+echo "Creating Secret..."
 
-echo
-echo "2. Reading secret..."
+aws secretsmanager create-secret \
+--name $SECRET_NAME \
+--kms-key-id $ALIAS_NAME \
+--secret-string "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}"
 
-SECRET_JSON=$(aws secretsmanager get-secret-value \
-    --secret-id "$SECRET_NAME" \
-    --query 'SecretString' \
-    --output text)
+echo "Secret Created Successfully"
 
-USERNAME=$(echo "$SECRET_JSON" | python3 -c \
-'import sys, json; print(json.load(sys.stdin)["username"])')
+echo "Retrieving Secret..."
 
-echo "Secret retrieved successfully."
-echo "Username: $USERNAME"
-echo "Password: [REDACTED]"
+aws secretsmanager get-secret-value \
+--secret-id $SECRET_NAME \
+--query SecretString \
+--output text
 
-echo
-echo "3. Updating secret..."
 
-aws secretsmanager update-secret \
-    --secret-id "$SECRET_NAME" \
-    --secret-string "{\"username\":\"admin\",\"password\":\"$SECRET_PASSWORD\"}" \
-    >/dev/null
 
-echo "Secret updated successfully."
-
-echo
-echo "4. Reading updated secret..."
-
-UPDATED_SECRET_JSON=$(aws secretsmanager get-secret-value \
-    --secret-id "$SECRET_NAME" \
-    --query 'SecretString' \
-    --output text)
-
-UPDATED_USERNAME=$(echo "$UPDATED_SECRET_JSON" | python3 -c \
-'import sys, json; print(json.load(sys.stdin)["username"])')
-
-echo "Updated secret retrieved successfully."
-echo "Username: $UPDATED_USERNAME"
-echo "Password: [REDACTED]"
-
-echo
-echo "5. Listing project secrets..."
-
-aws secretsmanager list-secrets \
-    --query 'SecretList[?starts_with(Name, `project/`)].Name' \
-    --output table
-
-echo
-echo "=========================================="
-echo "Automation completed successfully."
-echo "=========================================="
+Run it:
+chmod +x create_secret.sh
+./create_secret.sh
