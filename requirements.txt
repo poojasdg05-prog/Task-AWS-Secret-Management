@@ -1,2 +1,24 @@
 boto3
 botocore
+# AWS SDK for Python
+
+boto3
+
+# MySQL database connectivity
+
+PyMySQL
+
+# AWS SDK dependencies
+
+botocore
+
+
+For your Git repository, you can also pin versions after testing the project:
+
+boto3==1.x.x
+botocore==1.x.x
+PyMySQL==1.x.x
+
+But for a demo project, the first version is simpler and easier for others to install with:
+
+pip install -r requirements.txt
