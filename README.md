@@ -1,58 +1,63 @@
-AWS Secrets Manager + KMS Automation with Lambda (Real-Time DevOps Project)
+AWS Secrets Manager + KMS Automation using Lambda (Real-Time DevOps Project)
 
-Production-style AWS Secrets Management using Lambda, KMS, IAM Roles, EC2, CloudTrail, and Python
+A production-style AWS DevOps project demonstrating secure database credential management using AWS Secrets Manager, AWS KMS, Lambda, IAM Roles, EC2, CloudTrail, and Python (Boto3).
 
-This project demonstrates how to securely manage database credentials in AWS without hardcoding passwords inside application code. A Lambda function automates KMS key creation, secret creation, and secret retrieval, while an EC2 application server securely fetches credentials from AWS Secrets Manager using an IAM Role. CloudTrail records every secret access for auditing.
+AWS Python Lambda KMS CloudTrail
 
 Project Overview
 Problem Statement
 
-In many projects, database passwords are stored inside application code or configuration files.
+In many applications, database credentials are hardcoded inside source code or configuration files.
 
-Example:
+DB_HOST="98.xx.xx.xx"
+DB_USER="Application_user"
+DB_PASSWORD="MyDB@123"
+Problems with Hardcoded Credentials
 
-DB_PASSWORD = "MyDB@123"
+Password exposed in Git repositories.
 
-Problems:
+Manual password updates.
 
-Password exposed in Git repositories
+Application redeployment after password changes.
 
-Manual password updates
+No centralized credential management.
 
-Service downtime after password changes
+No audit trail.
 
-No audit trail
-
-Security compliance issues
+Increased security risk.
 
 Solution
 
-Store credentials in AWS Secrets Manager.
+This project automates secure secret management using AWS native services.
 
-Encrypt secrets using AWS KMS.
+Lambda automatically creates KMS Keys.
 
-Use Lambda for automation.
+Lambda creates Secrets Manager secrets.
 
-Allow EC2 to access secrets using IAM Roles.
+KMS encrypts database credentials.
 
-Monitor all activities through CloudTrail.
+EC2 Application Server retrieves secrets using IAM Roles.
+
+CloudTrail records every secret access.
+
+CloudWatch stores Lambda execution logs.
 
 Architecture
-End-to-End Flow
+Workflow
 
-Lambda creates a KMS Customer Managed Key.
+Lambda creates a Customer Managed KMS Key.
 
-Lambda enables KMS key rotation.
+Lambda enables Key Rotation.
 
-Lambda creates a secret in Secrets Manager.
+Lambda stores database credentials in Secrets Manager.
 
 Secret is encrypted using KMS.
 
-EC2 Application Server requests the secret.
+Application Server requests the secret.
 
-Secrets Manager asks KMS to decrypt it.
+Secrets Manager calls KMS for decryption.
 
-Credentials are returned.
+Credentials are returned securely.
 
 Application connects to MySQL.
 
@@ -73,7 +78,7 @@ EC2
 
 	
 
-Application and Database Server
+Application & Database Server
 
 
 
@@ -91,7 +96,7 @@ Secrets Manager
 
 	
 
-Store credentials
+Secure credential storage
 
 
 
@@ -109,7 +114,7 @@ IAM
 
 	
 
-Secure access
+Secure authentication
 
 
 
@@ -118,7 +123,7 @@ CloudTrail
 
 	
 
-Audit logs
+Audit logging
 
 
 
@@ -129,10 +134,29 @@ CloudWatch
 
 Lambda logs
 
-Project Setup (From Scratch)
-Step 1 – Create Database Server EC2
+Prerequisites
 
-Launch:
+AWS Account
+
+IAM User with Administrator Access (for demo)
+
+AWS CLI (optional)
+
+Python 3.12
+
+Boto3
+
+PyMySQL
+
+Install Python packages.
+
+python3 -m venv myenv
+source myenv/bin/activate
+
+pip install boto3 pymysql
+Step 1 – Create Database Server
+
+Launch an EC2 instance.
 
 Setting
 
@@ -167,6 +191,15 @@ Instance
 
 t3.micro
 
+
+
+
+Storage
+
+	
+
+8 GB
+
 Security Group
 
 Type
@@ -196,22 +229,13 @@ MySQL
 Install MySQL
 sudo apt update
 sudo apt install mysql-server -y
-Login
+Login to MySQL
 sudo mysql
 
-Notice:
-
-The prompt changes from:
-
-ubuntu@ip-172-31-xx-xx:~$
-
-to
+The prompt changes to:
 
 mysql>
-
-This means you are inside the MySQL console.
-
-Create Database
+Create Database and User
 CREATE DATABASE appdb;
 
 CREATE USER 'Application_user'@'%' IDENTIFIED BY 'MyDB@123';
@@ -222,15 +246,12 @@ FLUSH PRIVILEGES;
 Verify
 SHOW DATABASES;
 
-SELECT User, Host FROM mysql.user WHERE User='Application_user';
+SELECT User,Host FROM mysql.user;
 
 Expected:
 
 Application_user | %
-
-The % means remote connections are allowed (subject to Security Groups).
-
-Allow Remote Access
+Enable Remote Access
 
 Edit:
 
@@ -238,26 +259,26 @@ sudo nano /etc/mysql/mysql.conf.d/mysqld.cnf
 
 Change
 
-bind-address=127.0.0.1
+bind-address = 127.0.0.1
 
 to
 
-bind-address=0.0.0.0
+bind-address = 0.0.0.0
 
-Restart:
+Restart MySQL.
 
 sudo systemctl restart mysql
 
-Verify:
+Verify.
 
 sudo ss -lntp | grep 3306
 
 Expected:
 
 0.0.0.0:3306
-Step 2 – Create Application Server EC2
+Step 2 – Create Application Server
 
-Launch:
+Launch another EC2.
 
 Setting
 
@@ -283,28 +304,33 @@ AMI
 
 Ubuntu
 
+
+
+
+Instance
+
+	
+
+t3.micro
+
 Install Python.
 
 sudo apt update
-
 sudo apt install python3-pip -y
 
 python3 -m venv myenv
-
 source myenv/bin/activate
 
 pip install boto3 pymysql
-Step 3 – Create KMS Key
+Step 3 – Create Customer Managed KMS Key
 
-Console
+Open:
 
-KMS
+AWS Console → KMS → Customer Managed Keys
 
-Customer Managed Keys
+Click Create Key.
 
-Create Key
-
-Choose
+Choose:
 
 Symmetric
 
@@ -314,7 +340,7 @@ Alias:
 
 alias/demo-secret-key
 
-Enable Automatic Rotation. 
+Enable Automatic Key Rotation. 
 amazon.com
 
 Step 4 – IAM Roles
@@ -323,13 +349,11 @@ Lambda Role
 Role Name
 
 LambdaSecretsRole
-
-Attach
+Attach Managed Policy
 
 AWSLambdaBasicExecutionRole
 
-Custom Policy
-
+Custom IAM Policy
 {
  "Version":"2012-10-17",
  "Statement":[
@@ -343,14 +367,57 @@ Custom Policy
   }
  ]
 }
-Application EC2 Role
+Why?
+
+Permission
+
+	
+
+Purpose
+
+
+
+
+kms:CreateKey
+
+	
+
+Create encryption key
+
+
+
+
+kms:EnableKeyRotation
+
+	
+
+Enable rotation
+
+
+
+
+secretsmanager:CreateSecret
+
+	
+
+Store credentials
+
+
+
+
+secretsmanager:GetSecretValue
+
+	
+
+Retrieve credentials
+
+EC2 Application Role
 
 Role Name
 
 AppServerSecretsRole
 
 Attach Policy
-
 
 {
  "Version":"2012-10-17",
@@ -366,65 +433,82 @@ Attach Policy
  ]
 }
 
-Attach this IAM Role to the App Server EC2.
+Attach this role to your App-Server EC2.
 
 Step 5 – Create Lambda Function
 
-Runtime
+Runtime:
 
 Python 3.12
 
-Role
+Execution Role:
 
 LambdaSecretsRole
 
-Handler
+Handler:
 
 lambda_function.lambda_handler
-What does lambda_handler(event, context) do?
+Understanding lambda_handler(event, context)
 def lambda_handler(event, context):
 
 This is the entry point of Lambda.
 
-When AWS invokes Lambda, it automatically calls this function.
+Whenever Lambda is invoked, AWS automatically executes this function.
 
-event → Trigger input
+Parameter
 
-context → Execution information
+	
 
-Lambda Python Code
+Purpose
 
-This single Lambda will:
+
+
+
+event
+
+	
+
+Trigger input
+
+
+
+
+context
+
+	
+
+Execution metadata
+
+Lambda Automation Code
+
+This single Lambda performs:
 
 Create KMS Key
 
-Enable Key Rotation
+Enable Rotation
 
 Create Secret
 
-Store Database Credentials
+Store Credentials
 
 Retrieve Secret
-
-Return Output
-
 
 import boto3
 import json
 from botocore.exceptions import ClientError
 
-kms=boto3.client("kms")
-secrets=boto3.client("secretsmanager")
+kms = boto3.client("kms")
+secrets = boto3.client("secretsmanager")
 
-SECRET_NAME="DemoDBSecret"
+SECRET_NAME = "DemoDBSecret"
 
-def lambda_handler(event,context):
+def lambda_handler(event, context):
 
-    key=kms.create_key(
+    key = kms.create_key(
         Description="Demo Secret Key"
     )
 
-    key_id=key["KeyMetadata"]["KeyId"]
+    key_id = key["KeyMetadata"]["KeyId"]
 
     kms.enable_key_rotation(
         KeyId=key_id
@@ -435,7 +519,7 @@ def lambda_handler(event,context):
         TargetKeyId=key_id
     )
 
-    secret_value={
+    secret_value = {
         "host":"YOUR_DB_PUBLIC_IP",
         "username":"Application_user",
         "password":"MyDB@123",
@@ -476,20 +560,17 @@ def lambda_handler(event,context):
         }
     }
 
-Replace
+Replace:
 
 YOUR_DB_PUBLIC_IP
 
-with your MySQL server IP.
+with your database server IP.
 
 Lambda Test
 
-Click
-
-Test
+Click Test.
 
 Expected Output
-
 
 {
  "statusCode":200,
@@ -502,14 +583,11 @@ Expected Output
 }
 Step 6 – Verify Secret
 
-Secrets Manager
+Open:
 
-Open
+Secrets Manager → DemoDBSecret
 
-DemoDBSecret
-
-Secret
-
+Secret looks like:
 
 {
  "host":"98.xx.xx.xx",
@@ -519,75 +597,26 @@ Secret
  "port":"3306"
 }
 
-The password remains encrypted at rest using KMS. 
+Notice:
+
+Password is encrypted.
+
+KMS protects the secret at rest. 
 amazon.com
 
 Step 7 – Enable Secret Rotation
 
-Open Secret
+Open:
 
-Rotation
+Secrets Manager → Rotation
 
-Enable Rotation
+Enable Rotation.
 
 Choose a Lambda rotation function.
 
-AWS updates both the secret and the database credentials according to the configured schedule. 
+AWS automatically rotates the database credential according to the configured schedule. 
 amazon.com
 
-Step 8 – Application Fetches Secret
-
-The application never stores the password.
-
-Python Code
-
-import boto3
-import json
-import pymysql
-
-client=boto3.client("secretsmanager")
-
-response=client.get_secret_value(
-    SecretId="DemoDBSecret"
-)
-
-secret=json.loads(response["SecretString"])
-
-print("Retrieved Secret")
-
-print("Host:",secret["host"])
-print("Username:",secret["username"])
-print("Database:",secret["database"])
-print("Password: ********")
-
-conn=pymysql.connect(
-    host=secret["host"],
-    user=secret["username"],
-    password=secret["password"],
-    database=secret["database"],
-    port=int(secret["port"])
-)
-
-print("Connected Successfully")
-
-Run
-
-python3 demo-secret-manager.py
-
-Expected Output
-
-Retrieved Secret
-
-Host:98.xx.xx.xx
-
-Username:Application_user
-
-Database:appdb
-
-Password:********
-
-Connected Successfully
-How Secret Retrieval Works Internally
 Key Rotation vs Secret Rotation
 
 Feature
@@ -629,7 +658,7 @@ Secrets Manager
 
 
 
-Code Change
+Application Changes
 
 	
 
@@ -646,26 +675,85 @@ Example
 
 	
 
-V1 → V2
+Key Version V1 → V2
 
 	
 
 MyDB@123 → MyDB@456
 
-KMS rotation changes the encryption key material while Secrets Manager rotation changes the actual credential used by the application. 
-amazon.com
-+1
+Example
 
+Before Rotation
+
+Password: MyDB@123
+
+After Rotation
+
+Password: MyDB@456
+
+The application continues working because it always retrieves the latest secret dynamically.
+
+Step 8 – Application Fetches Secret
+
+The application never stores credentials locally.
+
+Python Code
+import boto3
+import json
+import pymysql
+
+client=boto3.client("secretsmanager")
+
+response=client.get_secret_value(
+    SecretId="DemoDBSecret"
+)
+
+secret=json.loads(response["SecretString"])
+
+print("Retrieved Secret")
+print("Host:",secret["host"])
+print("Username:",secret["username"])
+print("Database:",secret["database"])
+print("Password: ********")
+
+conn=pymysql.connect(
+    host=secret["host"],
+    user=secret["username"],
+    password=secret["password"],
+    database=secret["database"],
+    port=int(secret["port"])
+)
+
+print("Connected Successfully")
+
+Run:
+
+python3 demo-secret-manager.py
+
+Expected Output
+
+Retrieved Secret
+
+Host:98.xx.xx.xx
+
+Username:Application_user
+
+Database:appdb
+
+Password:********
+
+Connected Successfully
+How Secret Retrieval Works
 CloudTrail Monitoring
 
-CloudTrail automatically records every Secrets Manager and KMS API call. 
+CloudTrail automatically records all Secrets Manager and KMS API calls. 
 amazon.com
 
 Create Trail
 
-CloudTrail
+Open:
 
-Create Trail
+CloudTrail → Create Trail
 
 Enable:
 
@@ -675,20 +763,18 @@ Read Events
 
 Write Events
 
-View Secret Access Events
+View Secret Access
 
-Open
+Open:
 
-CloudTrail
-
-Event History
+CloudTrail → Event History
 
 Filter
 
 Event Source:
 secretsmanager.amazonaws.com
 
-Events:
+Expected Events
 
 Event
 
@@ -712,7 +798,7 @@ GetSecretValue
 
 	
 
-App accessed secret
+Application accessed secret
 
 
 
@@ -738,7 +824,7 @@ Filter
 
 kms.amazonaws.com
 
-Events:
+Expected
 
 Event
 
@@ -753,7 +839,7 @@ CreateKey
 
 	
 
-KMS Key created
+Key created
 
 
 
@@ -775,8 +861,7 @@ Secret decrypted
 
 Example CloudTrail Event
 
-This JSON is generated automatically by CloudTrail after your application accesses the secret.
-
+CloudTrail automatically generates JSON similar to:
 
 {
  "eventName":"GetSecretValue",
@@ -791,7 +876,7 @@ This JSON is generated automatically by CloudTrail after your application access
  "sourceIPAddress":"54.xx.xx.xx",
  "eventTime":"2026-08-31T10:15:00Z"
 }
-How to Analyze It
+Event Analysis
 
 Field
 
@@ -824,7 +909,7 @@ sourceIPAddress
 
 	
 
-EC2 IP
+EC2 source
 
 
 
@@ -837,7 +922,7 @@ Time of access
 
 CloudWatch Logs
 
-Lambda automatically writes logs.
+Lambda automatically writes execution logs.
 
 Example
 
@@ -849,10 +934,9 @@ Secret Retrieved Successfully
 
 END RequestId
 
-CloudWatch is the first place to investigate Lambda failures. 
-amazon.com
+CloudWatch is the first place to troubleshoot Lambda execution failures.
 
-Testing Checklist
+End-to-End Testing
 
 Test
 
@@ -863,7 +947,7 @@ Expected Result
 
 
 
-Lambda Invoke
+Invoke Lambda
 
 	
 
@@ -872,16 +956,16 @@ Secret created
 
 
 
-Secrets Manager
+Verify Secret
 
 	
 
-Secret visible
+Encrypted
 
 
 
 
-EC2 Python
+Run Python App
 
 	
 
@@ -899,7 +983,7 @@ GetSecretValue logged
 
 
 
-CloudTrail
+KMS
 
 	
 
@@ -912,7 +996,7 @@ CloudWatch
 
 	
 
-Lambda logs visible
+Logs generated
 
 Common Issues & Fixes
 
@@ -937,7 +1021,7 @@ Missing IAM permission
 
 	
 
-Attach required policies
+Attach required policy
 
 
 
@@ -950,16 +1034,16 @@ Missing kms:Decrypt
 
 	
 
-Update IAM policy
+Update IAM Role
 
 
 
 
-Secret Already Exists
+Secret Exists
 
 	
 
-Duplicate name
+Duplicate secret
 
 	
 
@@ -989,7 +1073,7 @@ Security Group
 
 	
 
-Allow port 3306
+Allow Port 3306
 
 
 
@@ -998,7 +1082,7 @@ Rotation Failed
 
 	
 
-Lambda issue
+Lambda error
 
 	
 
@@ -1019,49 +1103,45 @@ Keep resources in same Region
 
 Real-Time Use Case
 
-Imagine an e-commerce application.
+Imagine an e-commerce company.
 
 Without Secrets Manager:
 
-DB_PASSWORD="MyDB@123"
+Password stored in code.
 
-Problems
+Password shared manually.
 
-Password exposed
+Redeployment required after updates.
 
-Manual updates
+With Secrets Manager:
 
-Redeployment required
-
-With Secrets Manager
-
-EC2 requests the secret.
+Application requests credentials.
 
 IAM Role authenticates.
 
-Secrets Manager returns credentials.
+Secrets Manager returns encrypted credentials.
 
 KMS decrypts automatically.
 
-Application connects without exposing passwords.
+CloudTrail records the access.
 
-The same pattern is used in:
+This same pattern is used in:
 
-Banking
+Banking Applications
 
-Healthcare
+Healthcare Systems
 
-CI/CD pipelines
+CI/CD Pipelines
 
 Microservices
 
-SaaS platforms
+SaaS Platforms
 
-Cost Optimization Through Automation
+Cost Optimization
 
-Automation does not remove the Secrets Manager service cost, but it significantly reduces operational effort.
+This automation reduces operational costs, not the AWS service cost itself.
 
-Before
+Before Automation
 
 Manual secret creation
 
@@ -1071,19 +1151,19 @@ Application redeployment
 
 Manual auditing
 
-After
+After Automation
 
 Lambda creates secrets automatically.
 
-Password rotation is automatic.
+Password rotation is automated.
 
-No redeployment after password changes.
+No redeployment required.
 
 CloudTrail provides instant auditing.
 
-Example
+Example:
 
-Environment
+Applications
 
 	
 
@@ -1112,28 +1192,49 @@ This project successfully automated secure credential management using AWS nativ
 
 Achievements
 
-Created encrypted secrets.
+Created encrypted database secrets.
 
 Enabled KMS key rotation.
 
-Allowed EC2 to fetch secrets securely.
+Allowed EC2 to retrieve secrets securely using IAM Roles.
 
-Eliminated hardcoded passwords.
+Eliminated hardcoded credentials.
 
-Audited every access through CloudTrail.
+Monitored every access through CloudTrail.
 
 Demonstrated a production-style DevOps security workflow.
 
 Business Benefits
 
-Improved security
+Improved Security
 
-Reduced manual effort
+Reduced Manual Effort
 
-Automatic credential rotation
+Automatic Credential Rotation
 
-Centralized secret management
+Centralized Secret Management
 
-Faster deployments
+Faster Deployments
 
-Complete audit trail
+Complete Audit Trail
+
+Repository Structure
+aws-secret-manager-automation/
+│
+├── lambda/
+│   └── lambda_function.py
+│
+├── app/
+│   └── demo-secret-manager.py
+│
+├── policies/
+│   ├── lambda-policy.json
+│   └── appserver-policy.json
+│
+├── screenshots/
+│   ├── architecture.png
+│   ├── lambda-output.png
+│   ├── cloudtrail-events.png
+│   └── secret-created.png
+│
+└── README.md
